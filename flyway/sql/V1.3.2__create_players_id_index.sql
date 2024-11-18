@@ -1,0 +1,1 @@
+CREATE INDEX players_id_idx ON players (id);

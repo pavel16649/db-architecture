@@ -1,0 +1,210 @@
+networks:
+  demo:
+
+services:
+#  postgres:
+#    image: postgres:latest
+#    build:
+#      context: .
+#      dockerfile: Dockerfile
+#    restart: unless-stopped
+#    environment:
+#      POSTGRES_USER: postgres
+#      POSTGRES_PASSWORD: postgres
+#      POSTGRES_DB: postgres
+#    ports:
+#      - "5432:5432"
+#    volumes:
+#      - data:/var/lib/postgresql/data
+
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    networks:
+      - demo
+    volumes:
+      - ./postgres_exporter:/service/postgres_exporter
+    depends_on:
+      - haproxy
+    environment:
+      DATA_SOURCE_NAME: 'postgresql://postgres:postgres@haproxy:5000/postgres?sslmode=disable'
+      SSl_MODE: disable
+    command: [ "--config.file=/service/postgres_exporter/postgres_exporter.yml", "--collector.stat_statements" ]
+
+  prometheus:
+    image: prom/prometheus:latest
+    hostname: prometheus
+    networks:
+      - demo
+    volumes:
+      - ./prometheus/prometheus.yml:/service/prometheus/prometheus.yml
+    command:
+      - '--config.file=/service/prometheus/prometheus.yml'
+    ports:
+      - '9090:9090'
+    depends_on:
+      - postgres_exporter
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    volumes:
+      - grafana_data:/var/lib/grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    networks:
+      - demo
+    depends_on:
+      - prometheus
+
+  flyway:
+    image: flyway/flyway:latest
+    networks: [ demo ]
+    command: ["migrate", "-connectRetries=60"]
+    volumes:
+      - ./flyway/sql:/flyway/sql
+      - ./flyway/conf:/flyway/conf/
+    depends_on:
+      - haproxy
+    environment:
+      FLYWAY_URL: jdbc:postgresql://haproxy:5000/postgres
+      FLYWAY_USER: postgres
+      FLYWAY_PASSWORD: postgres
+
+  explain-analyze-service:
+    networks: [ demo ]
+    build:
+      context: ./ExplainAnalyzeService/
+      dockerfile: ./Dockerfile
+    volumes:
+      - ./explain-analyze-out:/service/explain_analyze_out
+      - ./queries:/service/queries
+    environment:
+      DB_HOST: "haproxy"
+      DB_PORT: "5000"
+      DB_NAME: "postgres"
+      DB_USER: "postgres"
+      DB_PASSWORD: "postgres"
+      NUM_TRIALS: "4"
+      QUERY_DIR: "/service/queries"
+      OUTPUT_DIR: "/service/explain_analyze_out"
+
+    depends_on:
+      - flyway
+
+  backup-service:
+    networks: [ demo ]
+    build:
+      context: ./BackupService/
+      dockerfile: ./Dockerfile
+    healthcheck:
+      test: [ "CMD-SHELL", "sh -c 'pg_isready -U postgres -d postgres'" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    volumes:
+      - ./backups:/backupService/backups
+    environment:
+      DB_HOST: "haproxy"
+      DB_PORT: "5000"
+      DB_NAME: "postgres"
+      DB_USER: "postgres"
+      DB_PASSWORD: "postgres"
+      BACKUP_DIR: "/backupService/backups"
+      BACKUP_INTERVAL_HOURS: "6"
+      BACKUP_KEEP_COUNT: "3"
+
+
+
+    depends_on:
+      - flyway
+
+  etcd1: &etcd
+    image: patroni
+    networks: [ demo ]
+    environment:
+      ETCD_LISTEN_PEER_URLS: http://0.0.0.0:2380
+      ETCD_LISTEN_CLIENT_URLS: http://0.0.0.0:2379
+      ETCD_INITIAL_CLUSTER: etcd1=http://etcd1:2380,etcd2=http://etcd2:2380,etcd3=http://etcd3:2380
+      ETCD_INITIAL_CLUSTER_STATE: new
+      ETCD_INITIAL_CLUSTER_TOKEN: tutorial
+      ETCD_UNSUPPORTED_ARCH: arm64
+    container_name: demo-etcd1
+    hostname: etcd1
+    command: etcd --name etcd1 --initial-advertise-peer-urls http://etcd1:2380
+
+  etcd2:
+    <<: *etcd
+    container_name: demo-etcd2
+    hostname: etcd2
+    command: etcd --name etcd2 --initial-advertise-peer-urls http://etcd2:2380
+
+  etcd3:
+    <<: *etcd
+    container_name: demo-etcd3
+    hostname: etcd3
+    command: etcd --name etcd3 --initial-advertise-peer-urls http://etcd3:2380
+
+  haproxy:
+    image: patroni
+    networks: [ demo ]
+    env_file: patroni/docker/patroni.env
+    hostname: haproxy
+    container_name: demo-haproxy
+    ports:
+      - "5000:5000"
+      - "5001:5001"
+    command: haproxy
+    environment: &haproxy_env
+      ETCDCTL_ENDPOINTS: http://etcd1:2379,http://etcd2:2379,http://etcd3:2379
+      PATRONI_ETCD3_HOSTS: "'etcd1:2379','etcd2:2379','etcd3:2379'"
+      PATRONI_SCOPE: demo
+
+  patroni1:
+    image: patroni
+    networks: [ demo ]
+    env_file: patroni/docker/patroni.env
+    healthcheck:
+      test: [ "CMD-SHELL", "sh -c 'pg_isready -U postgres -d postgres'" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    hostname: patroni1
+    container_name: demo-patroni1
+    environment:
+      <<: *haproxy_env
+      PATRONI_NAME: patroni1
+
+  patroni2:
+    image: patroni
+    networks: [ demo ]
+    env_file: patroni/docker/patroni.env
+    healthcheck:
+      test: [ "CMD-SHELL", "sh -c 'pg_isready -U postgres -d postgres'" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    hostname: patroni2
+    container_name: demo-patroni2
+    environment:
+      <<: *haproxy_env
+      PATRONI_NAME: patroni2
+
+  patroni3:
+    image: patroni
+    networks: [ demo ]
+    env_file: patroni/docker/patroni.env
+    healthcheck:
+      test: [ "CMD-SHELL", "sh -c 'pg_isready -U postgres -d postgres'" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    hostname: patroni3
+    container_name: demo-patroni3
+    environment:
+      <<: *haproxy_env
+      PATRONI_NAME: patroni3
+
+
+volumes:
+  data:
+  grafana_data: {}

@@ -1,0 +1,1 @@
+CREATE INDEX quests_quest_id_quest_location_idx ON quests (quest_id, quest_location);

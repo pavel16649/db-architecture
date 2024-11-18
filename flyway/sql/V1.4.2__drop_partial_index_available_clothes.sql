@@ -1,0 +1,1 @@
+drop index available_clothes_is_on_idx

@@ -1,0 +1,1 @@
+CREATE INDEX idx_quest_progress_player_id_quest_id_is_completed ON quest_progress (player_id, quest_id, is_completed);

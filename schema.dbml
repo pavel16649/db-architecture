@@ -1,0 +1,154 @@
+Enum clothes_type {
+  hat
+  glasses
+  shirt
+  jacket
+  pants
+  boots
+}
+
+Enum furniture_place_type {
+  floor
+  wall
+  on_table
+  special
+}
+
+Enum house_type {
+  common
+  tree
+  pyramid
+  club
+  pink
+  underwater
+}
+
+
+Table friendships {
+  friendship_id integer [primary key]
+  player1_id integer
+  player2_id integer
+  friendship_date timestamp 
+}
+
+Table messages {
+  message_id integer [primary key]
+  sender_id integer
+  receiver_id integer
+  sent_at timestamp
+  content text 
+}
+
+Table players {
+  id integer [primary key]
+  username varchar
+  password varchar
+  email varchar
+  registraton_date timestamp
+  level integer
+  balance integer
+  current_location integer
+}
+
+Table clothes {
+  item_id integer [primary key]
+  item_name varchar
+  description text 
+  price integer
+  available bool
+  type clothes_type
+  level_required integer
+}
+
+Table game_events {
+  event_id integer [primary key]
+  event_name varchar
+  description text
+  event_date timestamp
+}
+
+Table quests {
+  quest_id integer [primary key]
+  quest_name varchar
+  description text
+  level_required integer
+  reward integer
+  quest_location integer
+}
+
+Table available_clothes {
+  owner_id integer
+  item_id integer
+  is_on bool
+}
+
+Table card_info {
+  player_id integer
+  date_of_purchase timestamp
+  date_of_expire timestamp
+}
+
+Table house_info {
+  player_id integer
+  type house_type
+  has_garage bool
+}
+
+Table furniture {
+  item_id integer [primary key]
+  item_name varchar
+  description text 
+  price integer
+  available bool
+  place_type furniture_place_type
+  level_required integer
+}
+
+Table available_furniture {
+  owner_id integer
+  item_id integer
+}
+
+Table placed_furniture {
+  owner_id integer
+  item_id integer
+  pos_x integer
+  pos_y integer
+}
+
+Table quest_progress {
+  quest_id integer
+  player_id integer
+  is_completed bool
+}
+
+Table locations{
+  location_id integer [primary key]
+  location_name varchar
+  location_description text
+}
+
+Ref: players.id < friendships.player1_id
+Ref: players.id < friendships.player2_id
+
+Ref: players.id < available_clothes.owner_id
+Ref: clothes.item_id < available_clothes.item_id
+
+Ref: players.id < messages.sender_id
+Ref: players.id < messages.receiver_id
+
+Ref: players.id < card_info.player_id
+
+Ref: players.id < house_info.player_id
+
+Ref: players.id < available_furniture.owner_id
+Ref: furniture.item_id < available_furniture.item_id
+
+Ref: players.id < placed_furniture.owner_id
+Ref: furniture.item_id < placed_furniture.item_id
+
+Ref: players.id < quest_progress.player_id
+Ref: quests.quest_id < quest_progress.quest_id
+Ref: players.current_location > locations.location_id
+
+Ref: locations.location_id < quests.quest_location
